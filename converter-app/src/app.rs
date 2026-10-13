@@ -3,13 +3,22 @@ use std::sync::atomic::Ordering;
 use std::sync::{mpsc, Arc};
 
 use iced::widget::{
-    button, checkbox, column, container, pick_list, progress_bar, row, scrollable, text,
+    button, checkbox, column, container, pick_list, progress_bar, row, scrollable, svg, text,
     text_input, Space,
 };
 use iced::window;
 use iced::{Element, Fill, Subscription, Task};
 
 use converter_core::OutputFormat;
+
+const LOGO_SVG: &str = r##"<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M4 10V13" stroke="#38BDF8" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M16 10V13" stroke="#38BDF8" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M7 7L7 16" stroke="#38BDF8" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M13 7L13 16" stroke="#38BDF8" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M19 7L19 16" stroke="#38BDF8" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M10 4L10 19" stroke="#38BDF8" stroke-width="2.2" stroke-linecap="round"/>
+</svg>"##;
 
 use crate::job::{output_path_for, Job, JobStatus, JobTask};
 use crate::settings::{
@@ -82,6 +91,10 @@ impl Default for App {
 impl App {
     pub fn title(&self) -> String {
         "Tempo".to_string()
+    }
+
+    pub fn theme(&self) -> iced::Theme {
+        iced::Theme::Dark
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -383,17 +396,46 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let header = text("Tempo").size(26);
+        let brand_icon = svg(svg::Handle::from_memory(LOGO_SVG.as_bytes()))
+            .width(32)
+            .height(32);
+
+        let brand_title = column![
+            text("Tempo").size(24),
+            text("Free & Open Source Audio Converter").size(12),
+        ]
+        .spacing(2);
+
+        let header = row![
+            brand_icon,
+            brand_title,
+            Space::new().width(Fill),
+            text(format!(
+                "Queue: {} | Converted: {} | Failed: {}",
+                self.jobs.len(),
+                self.done_count,
+                self.failed_count
+            ))
+            .size(13),
+        ]
+        .spacing(12)
+        .align_y(iced::Alignment::Center);
 
         let toolbar = row![
-            button("Add files").on_press(Message::AddFiles),
-            button("Add folder").on_press(Message::AddFolder),
-            button("Clear finished").on_press(Message::ClearFinished),
+            button("+ Add Files").on_press(Message::AddFiles),
+            button("📁 Add Folder").on_press(Message::AddFolder),
+            button("✕ Clear Finished")
+                .on_press(Message::ClearFinished)
+                .style(button::secondary),
             Space::new().width(Fill),
             if self.running {
-                button("Stop").on_press(Message::Stop)
+                button("⏹ Stop Conversion")
+                    .on_press(Message::Stop)
+                    .style(button::danger)
             } else {
-                button("Convert").on_press(Message::Start)
+                button("▶ Start Conversion")
+                    .on_press(Message::Start)
+                    .style(button::primary)
             },
         ]
         .spacing(10);
@@ -405,31 +447,35 @@ impl App {
         let total = self.total_progress();
         let total_row = row![
             text(format!(
-                "{} done, {} failed",
+                "Total Progress ({} done, {} failed):",
                 self.done_count, self.failed_count
             ))
-            .size(14),
+            .size(13),
             progress_bar(0.0..=1.0, total).length(Fill),
         ]
-        .spacing(10);
+        .spacing(12)
+        .align_y(iced::Alignment::Center);
 
         let log_text = self
             .log
             .iter()
             .rev()
-            .take(8)
+            .take(6)
             .rev()
             .fold(String::new(), |mut acc, line| {
                 acc.push_str(line);
                 acc.push('\n');
                 acc
             });
-        let log_view = container(text(log_text).size(12)).padding(5);
+        let log_view = container(text(log_text).size(12))
+            .padding(8)
+            .style(container::bordered_box);
 
         let drop_hint = if self.hover_drop {
-            text("Drop audio files to add them").size(14)
+            text("Release to drop files and folders into Tempo").size(13)
         } else {
-            text("Tip: drag & drop audio files anywhere on this window").size(12)
+            text("Tip: drag & drop audio files or whole music folders anywhere on this window")
+                .size(12)
         };
 
         container(
@@ -542,11 +588,50 @@ impl App {
         ]
         .spacing(8);
 
-        column![row(row1).spacing(8), row2, row3].spacing(8).into()
+        container(
+            column![
+                text("Conversion Settings").size(14),
+                row(row1).spacing(8).align_y(iced::Alignment::Center),
+                row2.align_y(iced::Alignment::Center),
+                row3.align_y(iced::Alignment::Center),
+            ]
+            .spacing(10),
+        )
+        .padding(12)
+        .style(container::bordered_box)
+        .into()
     }
 
     fn queue_view(&self) -> Element<'_, Message> {
-        let mut list = column![].spacing(4);
+        if self.jobs.is_empty() {
+            return container(
+                column![
+                    text("No audio files in queue").size(16),
+                    text("Drag and drop audio tracks or folders anywhere, or click \"+ Add Files\" / \"📁 Add Folder\"")
+                        .size(13),
+                    text(format!("Supported input formats: {}", AUDIO_EXTS.join(", "))).size(11),
+                ]
+                .spacing(6)
+                .align_x(iced::Alignment::Center),
+            )
+            .width(Fill)
+            .height(240)
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Center)
+            .style(container::bordered_box)
+            .into();
+        }
+
+        let header_row = row![
+            text("Source File").width(320).size(12),
+            text("Format").width(110).size(12),
+            text("Progress").width(120).size(12),
+            text("Status").width(150).size(12),
+            text("").width(30),
+        ]
+        .spacing(8);
+
+        let mut list = column![header_row].spacing(6);
         for job in &self.jobs {
             let name = job
                 .input
@@ -559,26 +644,35 @@ impl App {
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("?")
-                .to_string();
+                .to_uppercase();
+            let out_ext = self.settings.format.extension().to_uppercase();
             let status = job.status.label();
             let bar = progress_bar(0.0..=1.0, job.status.progress()).length(120);
             let remove = if matches!(job.status, JobStatus::Queued) && !self.running {
-                button("x").on_press(Message::RemoveJob(job.id))
+                button("✕")
+                    .on_press(Message::RemoveJob(job.id))
+                    .style(button::secondary)
             } else {
-                button("x")
+                button("✕").style(button::secondary)
             };
             list = list.push(
                 row![
-                    text(name).width(280),
-                    text(format!("{} → {}", in_ext, self.settings.format.extension())).width(110),
+                    text(name).width(320).size(13),
+                    text(format!("{} → {}", in_ext, out_ext))
+                        .width(110)
+                        .size(12),
                     bar,
-                    text(status).width(150),
+                    text(status).width(150).size(12),
                     remove,
                 ]
-                .spacing(8),
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
             );
         }
-        scrollable(list).height(260).into()
+        container(scrollable(list).height(240))
+            .padding(10)
+            .style(container::bordered_box)
+            .into()
     }
 
     fn total_progress(&self) -> f32 {

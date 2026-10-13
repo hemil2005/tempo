@@ -11,7 +11,8 @@ use app::App;
 fn main() -> iced::Result {
     iced::application(App::default, App::update, App::view)
         .title(App::title)
+        .theme(App::theme)
         .subscription(App::subscription)
-        .window_size((900.0, 760.0))
+        .window_size((960.0, 780.0))
         .run()
 }
