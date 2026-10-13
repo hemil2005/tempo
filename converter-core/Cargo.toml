@@ -1,0 +1,25 @@
+[package]
+name = "converter-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+symphonia.workspace = true
+symphonia-adapter-libopus.workspace = true
+mp3lame-encoder.workspace = true
+audiopus.workspace = true
+vorbis_rs.workspace = true
+fdk-aac.workspace = true
+flacenc = { version = "0.5.1", default-features = false }
+hound.workspace = true
+id3.workspace = true
+metaflac.workspace = true
+mp4ameta.workspace = true
+mp4.workspace = true
+rubato.workspace = true
+ogg.workspace = true
+audioadapter-buffers = "5.2.0"
+bytes.workspace = true
+thiserror.workspace = true
+log.workspace = true

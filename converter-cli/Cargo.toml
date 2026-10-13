@@ -1,0 +1,13 @@
+[package]
+name = "converter-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+converter-core = { path = "../converter-core" }
+clap = { version = "4.5", features = ["derive"] }
+anyhow.workspace = true
+env_logger = "0.11.11"
+mp4 = "0.14"
+symphonia = { version = "0.6.1", features = ["all"] }

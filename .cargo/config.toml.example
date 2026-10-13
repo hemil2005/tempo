@@ -1,0 +1,16 @@
+# Example Cargo configuration for Windows with MinGW toolchain
+# Copy this file to .cargo/config.toml and adjust paths to match your environment.
+
+[env]
+# Path to your MinGW GCC/G++ binaries
+# CC = "C:\\mingw64\\bin\\gcc.exe"
+# CXX = "C:\\mingw64\\bin\\g++.exe"
+
+# If linking a custom static libopus:
+# LIBOPUS_LIB_DIR = "thirdparty/install/lib"
+# OPUS_STATIC = "1"
+# CFLAGS_x86_64-pc-windows-gnu = "-D__LP64__"
+
+[target.x86_64-pc-windows-gnu]
+# linker = "gcc"
+rustflags = ["-C", "link-arg=-lstdc++"]

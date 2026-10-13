@@ -1,0 +1,14 @@
+[package]
+name = "converter-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+converter-core = { path = "../converter-core" }
+iced = { version = "0.14", features = ["tokio"] }
+rfd = "0.17.2"
+
+[[bin]]
+name = "converter-app"
+path = "src/main.rs"

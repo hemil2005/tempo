@@ -1,0 +1,33 @@
+# Rust Cargo build artifacts
+/target/
+
+# Local machine-specific Cargo configuration
+.cargo/config.toml
+!.cargo/config.toml.example
+
+
+# Logs
+*.log
+build.log
+
+# Thirdparty intermediate build directories
+thirdparty/build/
+
+# Editor / IDE configuration
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Temporary / scratch files
+*.tmp
+testdata/gui-shot2.png
+testdata/gui-shot3.png
+testdata/dbg.txt
