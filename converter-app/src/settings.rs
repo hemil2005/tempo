@@ -25,9 +25,42 @@ impl fmt::Display for Mp3Mode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Preset {
+    HighQuality,
+    Balanced,
+    SpaceSaver,
+    Custom,
+}
+
+impl Preset {
+    pub const ALL: [Preset; 4] = [
+        Preset::HighQuality,
+        Preset::Balanced,
+        Preset::SpaceSaver,
+        Preset::Custom,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Preset::HighQuality => "High Quality (Best)",
+            Preset::Balanced => "Balanced (Standard)",
+            Preset::SpaceSaver => "Space Saver (Compact)",
+            Preset::Custom => "Custom",
+        }
+    }
+}
+
+impl fmt::Display for Preset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.label())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GuiSettings {
     pub format: OutputFormat,
+    pub preset: Preset,
     pub mp3_mode: Mp3Mode,
     pub mp3_bitrate: u32,
     pub mp3_vbr: u8,
@@ -44,6 +77,7 @@ impl Default for GuiSettings {
     fn default() -> Self {
         GuiSettings {
             format: OutputFormat::Mp3,
+            preset: Preset::Balanced,
             mp3_mode: Mp3Mode::Cbr,
             mp3_bitrate: 192,
             mp3_vbr: 2,
@@ -59,6 +93,33 @@ impl Default for GuiSettings {
 }
 
 impl GuiSettings {
+    pub fn apply_preset(&mut self, preset: Preset) {
+        self.preset = preset;
+        match preset {
+            Preset::HighQuality => {
+                self.mp3_bitrate = 320;
+                self.mp3_mode = Mp3Mode::Cbr;
+                self.aac_bitrate = 256;
+                self.opus_bitrate = 192;
+                self.vorbis_q = 8;
+            }
+            Preset::Balanced => {
+                self.mp3_bitrate = 192;
+                self.mp3_mode = Mp3Mode::Cbr;
+                self.aac_bitrate = 192;
+                self.opus_bitrate = 128;
+                self.vorbis_q = 6;
+            }
+            Preset::SpaceSaver => {
+                self.mp3_bitrate = 128;
+                self.mp3_mode = Mp3Mode::Cbr;
+                self.aac_bitrate = 128;
+                self.opus_bitrate = 96;
+                self.vorbis_q = 4;
+            }
+            Preset::Custom => {}
+        }
+    }
     pub fn to_encode_settings(&self) -> EncodeSettings {
         let quality = match self.format {
             OutputFormat::Mp3 => match self.mp3_mode {

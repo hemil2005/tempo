@@ -8,4 +8,4 @@ pub use decode::{decode_file, Decoded};
 pub use encode::convert;
 pub use error::{ConvertError, Result};
 pub use format::{AudioFormat, EncodeSettings, OutputFormat, Quality};
-pub use tags::Tags;
+pub use tags::{Picture, Tags};

@@ -8,7 +8,11 @@ mod tests {
     use converter_core::OutputFormat;
 
     fn test_wav() -> PathBuf {
-        PathBuf::from(r"D:\rust-audio-converter\testdata\tone.wav")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("testdata")
+            .join("tone.wav")
     }
 
     #[test]
@@ -60,7 +64,7 @@ mod tests {
 
     #[test]
     fn end_to_end_gui_conversion() {
-        let out = PathBuf::from(r"D:\rust-audio-converter\testdata\gui-out");
+        let out = std::env::temp_dir().join("tempo_gui_test_out");
         let _ = std::fs::remove_dir_all(&out);
         let mut app = App::default();
         let _ = app.update(Message::FilesAdded(vec![test_wav()]));
@@ -84,5 +88,39 @@ mod tests {
         );
         assert!(out.join("tone.opus").exists());
         let _ = std::fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn preset_selection_and_override() {
+        let mut app = App::default();
+        let _ = app.update(Message::PresetSelected(
+            crate::settings::Preset::HighQuality,
+        ));
+        assert_eq!(app.settings().preset, crate::settings::Preset::HighQuality);
+        assert_eq!(app.settings().mp3_bitrate, 320);
+        assert_eq!(app.settings().opus_bitrate, 192);
+
+        // Manually changing bitrate switches preset to Custom
+        let _ = app.update(Message::OpusBitrateSelected(96));
+        assert_eq!(app.settings().preset, crate::settings::Preset::Custom);
+        assert_eq!(app.settings().opus_bitrate, 96);
+    }
+
+    #[test]
+    fn recursive_folder_collection() {
+        let temp_dir = std::env::temp_dir().join("tempo_test_recursive");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        let sub = temp_dir.join("subdir");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(temp_dir.join("root.wav"), b"").unwrap();
+        std::fs::write(sub.join("nested.mp3"), b"").unwrap();
+        std::fs::write(sub.join("ignore.txt"), b"").unwrap();
+
+        let collected = crate::app::collect_audio_files_recursive(&temp_dir);
+        assert_eq!(collected.len(), 2);
+        assert!(collected.iter().any(|p| p.ends_with("root.wav")));
+        assert!(collected.iter().any(|p| p.ends_with("nested.mp3")));
+        assert!(!collected.iter().any(|p| p.ends_with("ignore.txt")));
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

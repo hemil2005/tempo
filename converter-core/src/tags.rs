@@ -5,6 +5,13 @@ use symphonia::core::meta::StandardTag;
 use crate::error::{ConvertError, Result};
 use crate::format::OutputFormat;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Picture {
+    pub mime_type: String,
+    pub data: Vec<u8>,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Tags {
     pub title: Option<String>,
@@ -21,6 +28,7 @@ pub struct Tags {
     pub comment: Option<String>,
     pub lyrics: Option<String>,
     pub encoder: Option<String>,
+    pub picture: Option<Picture>,
 }
 
 impl Tags {
@@ -70,6 +78,7 @@ impl Tags {
         take!(comment);
         take!(lyrics);
         take!(encoder);
+        take!(picture);
     }
 
     pub fn write_to_file(&self, path: &Path, format: OutputFormat) -> Result<()> {
@@ -123,6 +132,14 @@ impl Tags {
                 tag.set_disc(n);
             }
         }
+        if let Some(pic) = &self.picture {
+            tag.add_frame(id3::frame::Picture {
+                mime_type: pic.mime_type.clone(),
+                picture_type: id3::frame::PictureType::CoverFront,
+                description: pic.description.clone().unwrap_or_default(),
+                data: pic.data.clone(),
+            });
+        }
         tag.write_to_path(path, Version::Id3v24)
             .map_err(|e| ConvertError::Tags(e.to_string()))?;
         Ok(())
@@ -170,6 +187,13 @@ impl Tags {
         if let Some(v) = &self.lyrics {
             tag.set_vorbis("LYRICS", vec![v.clone()]);
         }
+        if let Some(pic) = &self.picture {
+            tag.add_picture(
+                pic.mime_type.clone(),
+                metaflac::block::PictureType::CoverFront,
+                pic.data.clone(),
+            );
+        }
         tag.save().map_err(|e| ConvertError::Tags(e.to_string()))?;
         Ok(())
     }
@@ -209,6 +233,14 @@ impl Tags {
         }
         if let Some(v) = &self.comment {
             tag.set_comment(v.clone());
+        }
+        if let Some(pic) = &self.picture {
+            let img = if pic.mime_type.contains("png") {
+                mp4ameta::Img::png(pic.data.clone())
+            } else {
+                mp4ameta::Img::jpeg(pic.data.clone())
+            };
+            tag.set_artwork(img);
         }
         tag.write_to_path(path)
             .map_err(|e| ConvertError::Tags(e.to_string()))?;
@@ -256,7 +288,7 @@ impl Tags {
         if let Some(v) = &self.lyrics {
             out.push(("LYRICS".to_string(), v.clone()));
         }
-        out.push(("ENCODER".to_string(), "rust-audio-converter".to_string()));
+        out.push(("ENCODER".to_string(), "Tempo".to_string()));
         out
     }
 
@@ -274,5 +306,82 @@ impl Tags {
             && self.composer.is_none()
             && self.comment.is_none()
             && self.lyrics.is_none()
+            && self.picture.is_none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn picture_handling_and_empty_check() {
+        let mut tags = Tags::default();
+        assert!(tags.is_empty());
+
+        let pic = Picture {
+            mime_type: "image/png".to_string(),
+            data: vec![0x89, 0x50, 0x4E, 0x47],
+            description: Some("Front Cover".to_string()),
+        };
+        tags.picture = Some(pic.clone());
+        assert!(!tags.is_empty());
+
+        let mut other = Tags::default();
+        other.merge(&tags);
+        assert!(other.picture.is_some());
+        assert_eq!(other.picture.as_ref().unwrap().mime_type, "image/png");
+        assert_eq!(other.picture.as_ref().unwrap().data, pic.data);
+    }
+
+    #[test]
+    fn vorbis_comments_generation() {
+        let tags = Tags {
+            title: Some("Test Title".to_string()),
+            artist: Some("Test Artist".to_string()),
+            ..Default::default()
+        };
+        let comments = tags.vorbis_comments();
+        assert!(comments
+            .iter()
+            .any(|(k, v)| k == "TITLE" && v == "Test Title"));
+        assert!(comments
+            .iter()
+            .any(|(k, v)| k == "ARTIST" && v == "Test Artist"));
+        assert!(comments.iter().any(|(k, v)| k == "ENCODER" && v == "Tempo"));
+    }
+
+    #[test]
+    fn id3_tag_and_artwork_write_and_read() {
+        use id3::TagLike;
+        let temp_file = std::env::temp_dir().join("tempo_test_art.mp3");
+        let _ = std::fs::remove_file(&temp_file);
+        std::fs::write(&temp_file, b"").unwrap();
+
+        let pic_data = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        let tags = Tags {
+            title: Some("Song With Art".to_string()),
+            artist: Some("Hemil Shah".to_string()),
+            album: Some("Tempo Album".to_string()),
+            picture: Some(Picture {
+                mime_type: "image/png".to_string(),
+                data: pic_data.clone(),
+                description: Some("Cover Art".to_string()),
+            }),
+            ..Default::default()
+        };
+
+        tags.write_to_file(&temp_file, OutputFormat::Mp3).unwrap();
+
+        let read_tag = id3::Tag::read_from_path(&temp_file).unwrap();
+        assert_eq!(read_tag.title(), Some("Song With Art"));
+        assert_eq!(read_tag.artist(), Some("Hemil Shah"));
+        assert_eq!(read_tag.album(), Some("Tempo Album"));
+
+        let pic = read_tag.pictures().next().expect("picture should exist");
+        assert_eq!(pic.mime_type, "image/png");
+        assert_eq!(pic.data, pic_data);
+
+        let _ = std::fs::remove_file(&temp_file);
     }
 }

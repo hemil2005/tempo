@@ -13,8 +13,8 @@ use converter_core::OutputFormat;
 
 use crate::job::{output_path_for, Job, JobStatus, JobTask};
 use crate::settings::{
-    Chans, GuiSettings, Kbps, Mp3Mode, Rate, VbrLevel, VorbisQ, AAC_RATES, CHAN_OPTS, MP3_RATES,
-    OPUS_RATES, RATE_OPTS, VBR_LEVELS, VORBIS_QS,
+    Chans, GuiSettings, Kbps, Mp3Mode, Preset, Rate, VbrLevel, VorbisQ, AAC_RATES, CHAN_OPTS,
+    MP3_RATES, OPUS_RATES, RATE_OPTS, VBR_LEVELS, VORBIS_QS,
 };
 use crate::worker::{spawn_workers, suggested_worker_count, WorkerEvent, WorkerPool};
 
@@ -25,12 +25,14 @@ const AUDIO_EXTS: [&str; 12] = [
 #[derive(Debug, Clone)]
 pub enum Message {
     AddFiles,
+    AddFolder,
     FilesAdded(Vec<PathBuf>),
     BrowseOutput,
     OutputChosen(Option<PathBuf>),
     OutputDirChanged(String),
     OverwriteToggled(bool),
     FormatSelected(OutputFormat),
+    PresetSelected(Preset),
     Mp3ModeSelected(Mp3Mode),
     Mp3BitrateSelected(u32),
     Mp3VbrChanged(u8),
@@ -94,6 +96,9 @@ impl App {
             Message::AddFiles => {
                 return Task::perform(pick_audio_files(), Message::FilesAdded);
             }
+            Message::AddFolder => {
+                return Task::perform(pick_audio_folder(), Message::FilesAdded);
+            }
             Message::FilesAdded(paths) => {
                 let mut added = 0;
                 for path in paths {
@@ -133,23 +138,32 @@ impl App {
             Message::FormatSelected(f) => {
                 self.settings.format = f;
             }
+            Message::PresetSelected(p) => {
+                self.settings.apply_preset(p);
+            }
             Message::Mp3ModeSelected(m) => {
                 self.settings.mp3_mode = m;
+                self.settings.preset = Preset::Custom;
             }
             Message::Mp3BitrateSelected(b) => {
                 self.settings.mp3_bitrate = b;
+                self.settings.preset = Preset::Custom;
             }
             Message::Mp3VbrChanged(v) => {
                 self.settings.mp3_vbr = v.min(9);
+                self.settings.preset = Preset::Custom;
             }
             Message::OpusBitrateSelected(b) => {
                 self.settings.opus_bitrate = b;
+                self.settings.preset = Preset::Custom;
             }
             Message::AacBitrateSelected(b) => {
                 self.settings.aac_bitrate = b;
+                self.settings.preset = Preset::Custom;
             }
             Message::VorbisQualityChanged(q) => {
                 self.settings.vorbis_q = q.min(10);
+                self.settings.preset = Preset::Custom;
             }
             Message::SampleRateSelected(r) => {
                 self.settings.sample_rate = r;
@@ -186,22 +200,17 @@ impl App {
                 window::Event::FileDropped(path) => {
                     self.hover_drop = false;
                     if path.is_dir() {
+                        let files = collect_audio_files_recursive(&path);
                         let mut added = 0;
-                        if let Ok(entries) = std::fs::read_dir(&path) {
-                            for entry in entries.flatten() {
-                                let p = entry.path();
-                                if p.is_file()
-                                    && is_audio_file(&p)
-                                    && !self.jobs.iter().any(|j| j.input == p)
-                                {
-                                    self.jobs.push(Job {
-                                        id: self.next_id,
-                                        input: p,
-                                        status: JobStatus::Queued,
-                                    });
-                                    self.next_id += 1;
-                                    added += 1;
-                                }
+                        for p in files {
+                            if !self.jobs.iter().any(|j| j.input == p) {
+                                self.jobs.push(Job {
+                                    id: self.next_id,
+                                    input: p,
+                                    status: JobStatus::Queued,
+                                });
+                                self.next_id += 1;
+                                added += 1;
                             }
                         }
                         if added > 0 {
@@ -378,6 +387,7 @@ impl App {
 
         let toolbar = row![
             button("Add files").on_press(Message::AddFiles),
+            button("Add folder").on_press(Message::AddFolder),
             button("Clear finished").on_press(Message::ClearFinished),
             Space::new().width(Fill),
             if self.running {
@@ -438,9 +448,18 @@ impl App {
             Message::FormatSelected,
         )
         .placeholder("Format")
-        .width(140);
+        .width(130);
 
-        let mut row1: Vec<Element<'_, Message>> = vec![text("Format:").into(), format_pick.into()];
+        let preset_pick = pick_list(&Preset::ALL[..], Some(s.preset), Message::PresetSelected)
+            .placeholder("Preset")
+            .width(170);
+
+        let mut row1: Vec<Element<'_, Message>> = vec![
+            text("Format:").into(),
+            format_pick.into(),
+            text("Preset:").into(),
+            preset_pick.into(),
+        ];
 
         match s.format {
             OutputFormat::Mp3 => {
@@ -596,6 +615,10 @@ impl App {
         self.settings.to_encode_settings()
     }
 
+    pub fn settings(&self) -> &GuiSettings {
+        &self.settings
+    }
+
     pub fn apply_test_event(&mut self, event: WorkerEvent) {
         self.apply_worker_event(event);
     }
@@ -640,4 +663,35 @@ async fn pick_output_folder() -> Option<PathBuf> {
         .pick_folder()
         .await
         .map(|h| h.path().to_path_buf())
+}
+
+async fn pick_audio_folder() -> Vec<PathBuf> {
+    if let Some(folder) = rfd::AsyncFileDialog::new()
+        .set_title("Choose folder to add")
+        .pick_folder()
+        .await
+    {
+        collect_audio_files_recursive(folder.path())
+    } else {
+        Vec::new()
+    }
+}
+
+pub fn collect_audio_files_recursive(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut dirs_to_visit = vec![dir.to_path_buf()];
+    while let Some(current_dir) = dirs_to_visit.pop() {
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    dirs_to_visit.push(p);
+                } else if is_audio_file(&p) {
+                    files.push(p);
+                }
+            }
+        }
+    }
+    files.sort();
+    files
 }

@@ -10,6 +10,8 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia_adapter_libopus::OpusDecoder;
 
+use id3::TagLike;
+
 use crate::error::{ConvertError, Result};
 use crate::tags::Tags;
 
@@ -109,11 +111,27 @@ pub fn decode_file(path: &Path) -> Result<Decoded> {
         }
     }
 
+    let native_tags = read_native_tags(path);
+    tags.merge(&native_tags);
+
     if let Some(rev) = format.metadata().skip_to_latest() {
         for tag in rev.media.tags.iter() {
             if let Some(std) = tag.std.as_ref() {
                 let t = Tags::from_standard(std);
                 tags.merge(&t);
+            }
+        }
+        for visual in rev.media.visuals.iter() {
+            if tags.picture.is_none() {
+                let mime = visual
+                    .media_type
+                    .clone()
+                    .unwrap_or_else(|| "image/jpeg".to_string());
+                tags.picture = Some(crate::tags::Picture {
+                    mime_type: mime,
+                    data: visual.data.to_vec(),
+                    description: None,
+                });
             }
         }
     }
@@ -129,4 +147,78 @@ pub fn decode_file(path: &Path) -> Result<Decoded> {
         bits_per_sample,
         tags,
     })
+}
+
+fn read_native_tags(path: &Path) -> Tags {
+    let mut tags = Tags::default();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    match ext.as_str() {
+        "mp3" => {
+            if let Ok(id3_tag) = id3::Tag::read_from_path(path) {
+                tags.title = id3_tag.title().map(|s| s.to_string());
+                tags.artist = id3_tag.artist().map(|s| s.to_string());
+                tags.album = id3_tag.album().map(|s| s.to_string());
+                tags.album_artist = id3_tag.album_artist().map(|s| s.to_string());
+                tags.genre = id3_tag.genre().map(|s| s.to_string());
+                tags.year = id3_tag.year().map(|y| y.to_string());
+                tags.track_number = id3_tag.track().map(|t| t.to_string());
+                tags.track_total = id3_tag.total_tracks().map(|t| t.to_string());
+                tags.disc_number = id3_tag.disc().map(|d| d.to_string());
+                if let Some(pic) = id3_tag.pictures().next() {
+                    tags.picture = Some(crate::tags::Picture {
+                        mime_type: pic.mime_type.clone(),
+                        data: pic.data.clone(),
+                        description: Some(pic.description.clone()),
+                    });
+                }
+            }
+        }
+        "flac" => {
+            if let Ok(flac_tag) = metaflac::Tag::read_from_path(path) {
+                if let Some(vorbis) = flac_tag.vorbis_comments() {
+                    tags.title = vorbis.title().and_then(|v| v.first().cloned());
+                    tags.artist = vorbis.artist().and_then(|v| v.first().cloned());
+                    tags.album = vorbis.album().and_then(|v| v.first().cloned());
+                    tags.genre = vorbis.genre().and_then(|v| v.first().cloned());
+                }
+                if let Some(pic) = flac_tag.pictures().next() {
+                    tags.picture = Some(crate::tags::Picture {
+                        mime_type: pic.mime_type.clone(),
+                        data: pic.data.clone(),
+                        description: Some(pic.description.clone()),
+                    });
+                }
+            }
+        }
+        "m4a" | "mp4" | "aac" => {
+            if let Ok(m4a_tag) = mp4ameta::Tag::read_from_path(path) {
+                tags.title = m4a_tag.title().map(|s| s.to_string());
+                tags.artist = m4a_tag.artist().map(|s| s.to_string());
+                tags.album = m4a_tag.album().map(|s| s.to_string());
+                tags.album_artist = m4a_tag.album_artist().map(|s| s.to_string());
+                tags.genre = m4a_tag.genre().map(|s| s.to_string());
+                tags.year = m4a_tag.year().map(|s| s.to_string());
+                tags.track_number = m4a_tag.track_number().map(|t| t.to_string());
+                tags.track_total = m4a_tag.total_tracks().map(|t| t.to_string());
+                if let Some(art) = m4a_tag.artwork() {
+                    let mime = match art.fmt {
+                        mp4ameta::ImgFmt::Png => "image/png",
+                        _ => "image/jpeg",
+                    };
+                    tags.picture = Some(crate::tags::Picture {
+                        mime_type: mime.to_string(),
+                        data: art.data.to_vec(),
+                        description: None,
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+    tags
 }

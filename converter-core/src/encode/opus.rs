@@ -36,7 +36,7 @@ fn opus_head(channels: u8) -> Vec<u8> {
 fn opus_tags(tags: &crate::tags::Tags) -> Vec<u8> {
     let mut v = Vec::new();
     v.extend_from_slice(b"OpusTags");
-    let vendor = b"rust-audio-converter";
+    let vendor = b"Tempo";
     v.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
     v.extend_from_slice(vendor);
     let comments = tags.vorbis_comments();
