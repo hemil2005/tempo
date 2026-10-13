@@ -1,21 +1,21 @@
-# Rust Audio Converter
+# 🎵 Tempo
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust: 2021](https://img.shields.io/badge/Rust-2021%20Edition-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
-> A fast, modern, privacy-first desktop audio converter built with Rust. 100% free and open-source — no cloud uploads, no ads, no file size limits.
+> **Tempo** is a fast, modern, privacy-first audio converter built with Rust. 100% free and open-source — no cloud uploads, no ads, no paywalls.
 
-![Audio Converter GUI](assets/gui-preview.png)
+![Tempo GUI Preview](assets/gui-preview.png)
 
 ---
 
 ## ✨ Features
 
-- **🔒 100% Offline & Private**: All conversions happen directly on your CPU. No accounts, no internet required, and zero telemetry.
+- **🔒 100% Offline & Private**: All conversions run locally on your CPU. No accounts, no internet connection required, and zero telemetry.
 - **⚡ Blazingly Fast**: Native performance powered by Rust, multi-threaded worker pools, and Link-Time Optimization (LTO).
-- **🖥️ Clean Desktop GUI**: Built with [Iced](https://github.com/iced-rs/iced) — drag & drop audio files, track real-time progress, and batch convert full albums with one click.
-- **💻 Power-User CLI**: Includes a dedicated, scriptable command-line interface (`converter-cli`) with rich argument parsing.
+- **🖥️ Clean Desktop GUI (`tempo`)**: Built with [Iced](https://github.com/iced-rs/iced) — drag & drop audio files, track real-time progress, and batch convert full albums with one click.
+- **💻 Scriptable CLI (`tempo-cli`)**: Includes a dedicated command-line interface for automation, power users, and shell scripts.
 - **🏷️ Metadata & Tag Preservation**: Transfers title, artist, album, genre, year, and track numbers between formats seamlessly.
 - **🎛️ Audio Customization**: Fine-tune CBR/VBR bitrates, sample rates (powered by the high-quality [Rubato](https://github.com/HEnquist/rubato) resampler), and channel configurations (Mono/Stereo).
 
@@ -37,10 +37,10 @@
 
 ## 🚀 Getting Started
 
-### 1. Graphical Desktop App
+### 1. Graphical Desktop App (`tempo`)
 
 Launch the application:
-- On Windows, double-click `converter-app.exe` (or run `Start-Process converter-app.exe`).
+- On Windows, double-click **`tempo.exe`** (or run `Start-Process tempo.exe` in PowerShell).
 
 **Usage:**
 1. Click **Add files** or drag & drop audio tracks directly into the window.
@@ -50,22 +50,22 @@ Launch the application:
 
 ---
 
-### 2. Command-Line Interface (CLI)
+### 2. Command-Line Interface (`tempo-cli`)
 
-The CLI tool allows quick single-file conversions or integration into automated scripts:
+Use `tempo-cli` for quick conversions or batch scripts:
 
 ```powershell
 # Basic conversion: WAV to MP3
-converter-cli -f mp3 "song.wav" "song.mp3"
+tempo-cli -f mp3 "song.wav" "song.mp3"
 
 # High-quality FLAC to AAC (M4A) with custom bitrate
-converter-cli -f m4a -b 256 "track.flac" "track.m4a"
+tempo-cli -f m4a -b 256 "track.flac" "track.m4a"
 
 # Convert to Opus with custom sample rate and mono channels
-converter-cli -f opus -b 96 --sample-rate 48000 --channels 1 "input.wav" "output.opus"
+tempo-cli -f opus -b 96 --sample-rate 48000 --channels 1 "input.wav" "output.opus"
 
-# View all options
-converter-cli --help
+# View all options and supported flags
+tempo-cli --help
 ```
 
 ---
@@ -83,37 +83,36 @@ converter-cli --help
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/rust-audio-converter.git
-cd rust-audio-converter
+git clone https://github.com/your-username/tempo.git
+cd tempo
 
 # Build development binaries
 cargo build
 
 # Build optimized release binaries (LTO enabled)
-# On Windows, use the helper script to configure MinGW PATH:
 powershell -ExecutionPolicy Bypass -File .\build.ps1 build --release
 
 # Run automated tests
 powershell -ExecutionPolicy Bypass -File .\build.ps1 test
 ```
 
-Binaries will be placed in:
-- `target/release/converter-app.exe` (Desktop GUI)
-- `target/release/converter-cli.exe` (Command-Line Tool)
+Binaries will be placed in `target/release/`:
+- **`tempo.exe`** — Graphical Desktop Application
+- **`tempo-cli.exe`** — Command-Line Tool
 
 ---
 
-## 📂 Project Architecture
+## 📂 Architecture
 
-This repository is structured as a Cargo workspace with three focused crates:
+This repository is structured as a Cargo workspace:
 
 ```text
-rust-audio-converter/
-├── converter-core/     # Pure conversion library (decoding, resampling, encoding, metadata tags)
-├── converter-cli/      # Command-line binary interface using clap
-├── converter-app/      # Cross-platform desktop GUI built on Iced
-├── assets/             # Project screenshots and branding icons
-└── testdata/           # Test audio clips and verification suites
+tempo/
+├── converter-core/     # Audio processing engine (decoding, resampling, encoding, metadata tags)
+├── converter-cli/      # Command-line interface (tempo-cli)
+├── converter-app/      # Desktop GUI interface (tempo)
+├── assets/             # Screenshots and branding icons
+└── testdata/           # Test audio suites and verification clips
 ```
 
 ---
@@ -123,6 +122,7 @@ rust-audio-converter/
 - [x] Multi-format decode and encode core engine
 - [x] Multi-threaded batch conversion worker pool
 - [x] Desktop GUI with drag-and-drop support
+- [x] CLI interface (`tempo-cli`)
 - [ ] Embedded album art / cover art preservation
 - [ ] Folder-level recursive batch conversion
 - [ ] Beginner-friendly preset profiles ("High Quality", "Podcast", "Lossless Archival")

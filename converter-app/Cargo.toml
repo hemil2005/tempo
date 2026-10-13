@@ -10,5 +10,5 @@ iced = { version = "0.14", features = ["tokio"] }
 rfd = "0.17.2"
 
 [[bin]]
-name = "converter-app"
+name = "tempo"
 path = "src/main.rs"

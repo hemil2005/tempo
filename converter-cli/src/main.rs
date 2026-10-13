@@ -30,7 +30,7 @@ impl From<OutFmt> for OutputFormat {
 }
 
 #[derive(Parser)]
-#[command(name = "converter", about = "Audio format converter")]
+#[command(name = "tempo-cli", about = "Tempo - Fast, offline audio format converter")]
 struct Args {
     input: PathBuf,
     output: PathBuf,

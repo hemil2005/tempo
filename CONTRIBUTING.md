@@ -1,6 +1,6 @@
-# Contributing to Rust Audio Converter
+# Contributing to Tempo
 
-Thank you for your interest in contributing to **Rust Audio Converter**! This project is 100% free and open-source, aiming to provide an accessible, high-performance audio converter for everyone.
+Thank you for your interest in contributing to **Tempo**! This project is 100% free and open-source, aiming to provide an accessible, high-performance audio converter for everyone.
 
 ---
 

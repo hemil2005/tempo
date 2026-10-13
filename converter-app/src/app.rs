@@ -79,7 +79,7 @@ impl Default for App {
 
 impl App {
     pub fn title(&self) -> String {
-        "Audio Converter".to_string()
+        "Tempo".to_string()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -374,7 +374,7 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let header = text("Audio Converter").size(26);
+        let header = text("Tempo").size(26);
 
         let toolbar = row![
             button("Add files").on_press(Message::AddFiles),
