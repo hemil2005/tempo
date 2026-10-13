@@ -9,6 +9,9 @@ converter-core = { path = "../converter-core" }
 iced = { version = "0.14", features = ["tokio"] }
 rfd = "0.17.2"
 
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
 [[bin]]
 name = "tempo"
 path = "src/main.rs"
