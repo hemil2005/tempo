@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag (e.g. v0.1.0)'
+        required: false
+        default: 'v0.1.0'
 
 permissions:
   contents: write
@@ -42,7 +48,19 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libasound2-dev libopus-dev libmp3lame-dev
+          sudo apt-get install -y pkg-config cmake libasound2-dev libopus-dev libmp3lame-dev libfontconfig1-dev libxkbcommon-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libwayland-dev
+
+      - name: Determine Version
+        id: get_version
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "VER=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "VER=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VER=v0.1.0" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build Release Binaries
         run: cargo build --release --target ${{ matrix.target }}
@@ -51,19 +69,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $ver = "${{ github.ref_name }}"
+          $ver = "${{ steps.get_version.outputs.VER }}"
           $dir = "tempo-$ver-windows-x64"
-          New-Item -ItemType Directory -Path $dir
+          New-Item -ItemType Directory -Path $dir -Force
           Copy-Item "target/${{ matrix.target }}/release/tempo.exe" -Destination "$dir\"
           Copy-Item "target/${{ matrix.target }}/release/tempo-cli.exe" -Destination "$dir\"
           Copy-Item "README.md", "LICENSE", "THIRDPARTY.md" -Destination "$dir\"
-          Compress-Archive -Path "$dir\*" -DestinationPath "$dir.zip"
+          Compress-Archive -Path "$dir\*" -DestinationPath "$dir.zip" -Force
           echo "ASSET_NAME=$dir.zip" >> $env:GITHUB_ENV
 
       - name: Package Linux Artifacts
         if: runner.os == 'Linux'
         run: |
-          ver="${{ github.ref_name }}"
+          ver="${{ steps.get_version.outputs.VER }}"
           dir="tempo-$ver-linux-x64"
           mkdir -p "$dir"
           cp "target/${{ matrix.target }}/release/tempo" "$dir/"
@@ -75,7 +93,7 @@ jobs:
       - name: Package macOS Artifacts
         if: runner.os == 'macOS'
         run: |
-          ver="${{ github.ref_name }}"
+          ver="${{ steps.get_version.outputs.VER }}"
           dir="tempo-$ver-macos-arm64"
           mkdir -p "$dir"
           cp "target/${{ matrix.target }}/release/tempo" "$dir/"
@@ -87,6 +105,10 @@ jobs:
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.get_version.outputs.VER }}
+          name: Tempo ${{ steps.get_version.outputs.VER }}
           files: ${{ env.ASSET_NAME }}
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

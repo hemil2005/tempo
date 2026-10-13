@@ -29,6 +29,8 @@ $RECYCLE.BIN/
 
 # Temporary / scratch files
 *.tmp
+*.bak
+tempCodeRunnerFile*
 testdata/gui-shot2.png
 testdata/gui-shot3.png
 testdata/dbg.txt
