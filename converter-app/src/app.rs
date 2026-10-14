@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
 use std::sync::{mpsc, Arc};
 
 use iced::widget::{
@@ -51,8 +50,14 @@ pub enum Message {
     SampleRateSelected(u32),
     ChannelsSelected(u16),
     RemoveJob(u64),
+    MoveJobUp(u64),
+    MoveJobDown(u64),
+    RetryJob(u64),
+    RetryAllFailed,
     ClearFinished,
     Start,
+    Pause,
+    Resume,
     Stop,
     PollWorker,
     WindowEvent(window::Event),
@@ -64,6 +69,7 @@ pub struct App {
     log: Vec<String>,
     next_id: u64,
     running: bool,
+    paused: bool,
     done_count: usize,
     failed_count: usize,
     worker_rx: Option<mpsc::Receiver<WorkerEvent>>,
@@ -79,6 +85,7 @@ impl Default for App {
             log: Vec::new(),
             next_id: 1,
             running: false,
+            paused: false,
             done_count: 0,
             failed_count: 0,
             worker_rx: None,
@@ -189,6 +196,62 @@ impl App {
                     self.jobs.retain(|j| j.id != id);
                 }
             }
+            Message::MoveJobUp(id) => {
+                if !self.running {
+                    if let Some(idx) = self.jobs.iter().position(|j| j.id == id) {
+                        if idx > 0 {
+                            self.jobs.swap(idx, idx - 1);
+                        }
+                    }
+                }
+            }
+            Message::MoveJobDown(id) => {
+                if !self.running {
+                    if let Some(idx) = self.jobs.iter().position(|j| j.id == id) {
+                        if idx + 1 < self.jobs.len() {
+                            self.jobs.swap(idx, idx + 1);
+                        }
+                    }
+                }
+            }
+            Message::RetryJob(id) => {
+                if !self.running {
+                    let mut requeued_name = None;
+                    if let Some(job) = self.jobs.iter_mut().find(|j| j.id == id) {
+                        if job.status.is_failed() {
+                            job.status = JobStatus::Queued;
+                            requeued_name = Some(
+                                job.input
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("file")
+                                    .to_string(),
+                            );
+                        }
+                    }
+                    if let Some(name) = requeued_name {
+                        if self.failed_count > 0 {
+                            self.failed_count -= 1;
+                        }
+                        self.push_log(format!("requeued {}", name));
+                    }
+                }
+            }
+            Message::RetryAllFailed => {
+                if !self.running {
+                    let mut count = 0;
+                    for job in &mut self.jobs {
+                        if job.status.is_failed() {
+                            job.status = JobStatus::Queued;
+                            count += 1;
+                        }
+                    }
+                    self.failed_count = 0;
+                    if count > 0 {
+                        self.push_log(format!("requeued {} failed job(s)", count));
+                    }
+                }
+            }
             Message::ClearFinished => {
                 if !self.running {
                     self.jobs.retain(|j| !j.status.is_finished());
@@ -197,9 +260,28 @@ impl App {
             Message::Start => {
                 self.start_conversion();
             }
+            Message::Pause => {
+                if self.running && !self.paused {
+                    if let Some(pool) = &self.pool {
+                        pool.pause();
+                        self.paused = true;
+                        self.push_log("queue paused".to_string());
+                    }
+                }
+            }
+            Message::Resume => {
+                if self.running && self.paused {
+                    if let Some(pool) = &self.pool {
+                        pool.resume();
+                        self.paused = false;
+                        self.push_log("queue resumed".to_string());
+                    }
+                }
+            }
             Message::Stop => {
                 if let Some(pool) = &self.pool {
-                    pool.cancel.store(true, Ordering::SeqCst);
+                    pool.cancel();
+                    self.paused = false;
                     self.push_log("stopping after current file(s)...".to_string());
                 }
             }
@@ -324,6 +406,7 @@ impl App {
             .count();
         if pending == 0 {
             self.running = false;
+            self.paused = false;
             self.pool = None;
             self.worker_rx = None;
             self.push_log(format!(
@@ -378,10 +461,13 @@ impl App {
 
         let (tx, rx) = mpsc::channel();
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pause = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pause_cond = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
         let n = suggested_worker_count();
-        self.pool = Some(spawn_workers(tasks, tx, cancel, n));
+        self.pool = Some(spawn_workers(tasks, tx, cancel, pause, pause_cond, n));
         self.worker_rx = Some(rx);
         self.running = true;
+        self.paused = false;
         self.done_count = 0;
         self.failed_count = 0;
         self.push_log(format!(
@@ -421,24 +507,63 @@ impl App {
         .spacing(12)
         .align_y(iced::Alignment::Center);
 
-        let toolbar = row![
-            button("+ Add Files").on_press(Message::AddFiles),
-            button("📁 Add Folder").on_press(Message::AddFolder),
-            button("✕ Clear Finished")
-                .on_press(Message::ClearFinished)
-                .style(button::secondary),
-            Space::new().width(Fill),
-            if self.running {
-                button("⏹ Stop Conversion")
+        let mut toolbar_items: Vec<Element<'_, Message>> = vec![
+            button("+ Add Files").on_press(Message::AddFiles).into(),
+            button("📁 Add Folder").on_press(Message::AddFolder).into(),
+        ];
+
+        if !self.running && self.failed_count > 0 {
+            toolbar_items.push(
+                button("🔄 Retry Failed")
+                    .on_press(Message::RetryAllFailed)
+                    .style(button::secondary)
+                    .into(),
+            );
+        }
+
+        if !self.running && (self.done_count > 0 || self.failed_count > 0) {
+            toolbar_items.push(
+                button("✕ Clear Finished")
+                    .on_press(Message::ClearFinished)
+                    .style(button::secondary)
+                    .into(),
+            );
+        }
+
+        toolbar_items.push(Space::new().width(Fill).into());
+
+        if self.running {
+            if self.paused {
+                toolbar_items.push(
+                    button("▶ Resume")
+                        .on_press(Message::Resume)
+                        .style(button::primary)
+                        .into(),
+                );
+            } else {
+                toolbar_items.push(
+                    button("⏸ Pause")
+                        .on_press(Message::Pause)
+                        .style(button::secondary)
+                        .into(),
+                );
+            }
+            toolbar_items.push(
+                button("⏹ Cancel")
                     .on_press(Message::Stop)
                     .style(button::danger)
-            } else {
+                    .into(),
+            );
+        } else {
+            toolbar_items.push(
                 button("▶ Start Conversion")
                     .on_press(Message::Start)
                     .style(button::primary)
-            },
-        ]
-        .spacing(10);
+                    .into(),
+            );
+        }
+
+        let toolbar = row(toolbar_items).spacing(10);
 
         let settings = self.settings_view();
 
@@ -623,16 +748,17 @@ impl App {
         }
 
         let header_row = row![
-            text("Source File").width(320).size(12),
-            text("Format").width(110).size(12),
-            text("Progress").width(120).size(12),
-            text("Status").width(150).size(12),
-            text("").width(30),
+            text("Source File").width(280).size(12),
+            text("Format").width(100).size(12),
+            text("Progress").width(110).size(12),
+            text("Status").width(130).size(12),
+            text("Actions").width(90).size(12),
         ]
         .spacing(8);
 
         let mut list = column![header_row].spacing(6);
-        for job in &self.jobs {
+        let len = self.jobs.len();
+        for (idx, job) in self.jobs.iter().enumerate() {
             let name = job
                 .input
                 .file_name()
@@ -647,23 +773,65 @@ impl App {
                 .to_uppercase();
             let out_ext = self.settings.format.extension().to_uppercase();
             let status = job.status.label();
-            let bar = progress_bar(0.0..=1.0, job.status.progress()).length(120);
-            let remove = if matches!(job.status, JobStatus::Queued) && !self.running {
-                button("✕")
-                    .on_press(Message::RemoveJob(job.id))
-                    .style(button::secondary)
-            } else {
-                button("✕").style(button::secondary)
-            };
+            let bar = progress_bar(0.0..=1.0, job.status.progress()).length(110);
+
+            let mut actions: Vec<Element<'_, Message>> = Vec::new();
+            if !self.running && job.status.is_queued() {
+                if idx > 0 {
+                    actions.push(
+                        button("▲")
+                            .on_press(Message::MoveJobUp(job.id))
+                            .style(button::secondary)
+                            .into(),
+                    );
+                }
+                if idx + 1 < len {
+                    actions.push(
+                        button("▼")
+                            .on_press(Message::MoveJobDown(job.id))
+                            .style(button::secondary)
+                            .into(),
+                    );
+                }
+                actions.push(
+                    button("✕")
+                        .on_press(Message::RemoveJob(job.id))
+                        .style(button::secondary)
+                        .into(),
+                );
+            } else if !self.running && job.status.is_failed() {
+                actions.push(
+                    button("🔄")
+                        .on_press(Message::RetryJob(job.id))
+                        .style(button::secondary)
+                        .into(),
+                );
+                actions.push(
+                    button("✕")
+                        .on_press(Message::RemoveJob(job.id))
+                        .style(button::secondary)
+                        .into(),
+                );
+            } else if !self.running {
+                actions.push(
+                    button("✕")
+                        .on_press(Message::RemoveJob(job.id))
+                        .style(button::secondary)
+                        .into(),
+                );
+            }
+
+            let action_row = row(actions).spacing(4).align_y(iced::Alignment::Center);
+
             list = list.push(
                 row![
-                    text(name).width(320).size(13),
+                    text(name).width(280).size(13),
                     text(format!("{} → {}", in_ext, out_ext))
-                        .width(110)
+                        .width(100)
                         .size(12),
                     bar,
-                    text(status).width(150).size(12),
-                    remove,
+                    text(status).width(130).size(12),
+                    action_row,
                 ]
                 .spacing(8)
                 .align_y(iced::Alignment::Center),
@@ -719,6 +887,10 @@ impl App {
 
     pub fn is_running(&self) -> bool {
         self.running
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.paused
     }
 }
 

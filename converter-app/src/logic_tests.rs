@@ -15,6 +15,14 @@ mod tests {
             .join("tone.wav")
     }
 
+    fn test_short_wav() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("testdata")
+            .join("short.wav")
+    }
+
     #[test]
     fn add_and_remove_job() {
         let mut app = App::default();
@@ -122,5 +130,65 @@ mod tests {
         assert!(collected.iter().any(|p| p.ends_with("nested.mp3")));
         assert!(!collected.iter().any(|p| p.ends_with("ignore.txt")));
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn reorder_jobs_up_and_down() {
+        let mut app = App::default();
+        let file1 = test_wav();
+        let file2 = test_short_wav();
+        let _ = app.update(Message::FilesAdded(vec![file1, file2]));
+        assert_eq!(app.job_count(), 2);
+        let ids = app.job_ids();
+        let id1 = ids[0];
+        let id2 = ids[1];
+
+        // Move second job up
+        let _ = app.update(Message::MoveJobUp(id2));
+        assert_eq!(app.job_ids(), vec![id2, id1]);
+
+        // Move first job (now id2) up (should be no-op since it's already top)
+        let _ = app.update(Message::MoveJobUp(id2));
+        assert_eq!(app.job_ids(), vec![id2, id1]);
+
+        // Move id2 down
+        let _ = app.update(Message::MoveJobDown(id2));
+        assert_eq!(app.job_ids(), vec![id1, id2]);
+    }
+
+    #[test]
+    fn retry_individual_and_all_failed_jobs() {
+        let mut app = App::default();
+        let file1 = test_wav();
+        let file2 = test_short_wav();
+        let _ = app.update(Message::FilesAdded(vec![file1, file2]));
+        let ids = app.job_ids();
+        let id1 = ids[0];
+        let id2 = ids[1];
+
+        app.apply_test_event(WorkerEvent::Finished(id1, Err("error 1".to_string())));
+        app.apply_test_event(WorkerEvent::Finished(id2, Err("error 2".to_string())));
+        assert!(matches!(app.job_status(id1), Some(JobStatus::Failed(_))));
+        assert!(matches!(app.job_status(id2), Some(JobStatus::Failed(_))));
+
+        // Retry individual job
+        let _ = app.update(Message::RetryJob(id1));
+        assert!(matches!(app.job_status(id1), Some(JobStatus::Queued)));
+        assert!(matches!(app.job_status(id2), Some(JobStatus::Failed(_))));
+
+        // Retry all remaining failed
+        let _ = app.update(Message::RetryAllFailed);
+        assert!(matches!(app.job_status(id1), Some(JobStatus::Queued)));
+        assert!(matches!(app.job_status(id2), Some(JobStatus::Queued)));
+    }
+
+    #[test]
+    fn pause_and_resume_state() {
+        let mut app = App::default();
+        let _ = app.update(Message::FilesAdded(vec![test_wav()]));
+        assert!(!app.is_paused());
+        // Pause when not running is a no-op
+        let _ = app.update(Message::Pause);
+        assert!(!app.is_paused());
     }
 }

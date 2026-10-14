@@ -7,7 +7,7 @@ pub struct Job {
     pub status: JobStatus,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum JobStatus {
     Queued,
     Running(f32),
@@ -40,6 +40,14 @@ impl JobStatus {
             self,
             JobStatus::Done | JobStatus::Failed(_) | JobStatus::Cancelled
         )
+    }
+
+    pub fn is_queued(&self) -> bool {
+        matches!(self, JobStatus::Queued)
+    }
+
+    pub fn is_failed(&self) -> bool {
+        matches!(self, JobStatus::Failed(_))
     }
 }
 

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
 
 use crate::job::JobTask;
@@ -13,13 +13,39 @@ pub enum WorkerEvent {
 
 pub struct WorkerPool {
     pub cancel: Arc<AtomicBool>,
+    pub pause: Arc<AtomicBool>,
+    pause_cond: Arc<(Mutex<bool>, Condvar)>,
     _handles: Vec<thread::JoinHandle<()>>,
+}
+
+impl WorkerPool {
+    pub fn pause(&self) {
+        self.pause.store(true, Ordering::SeqCst);
+        let mut lock = self.pause_cond.0.lock().expect("pause lock");
+        *lock = true;
+    }
+
+    pub fn resume(&self) {
+        self.pause.store(false, Ordering::SeqCst);
+        let mut lock = self.pause_cond.0.lock().expect("pause lock");
+        *lock = false;
+        self.pause_cond.1.notify_all();
+    }
+
+    pub fn cancel(&self) {
+        self.cancel.store(true, Ordering::SeqCst);
+        let mut lock = self.pause_cond.0.lock().expect("pause lock");
+        *lock = false;
+        self.pause_cond.1.notify_all();
+    }
 }
 
 pub fn spawn_workers(
     tasks: Vec<JobTask>,
     tx: mpsc::Sender<WorkerEvent>,
     cancel: Arc<AtomicBool>,
+    pause: Arc<AtomicBool>,
+    pause_cond: Arc<(Mutex<bool>, Condvar)>,
     num_workers: usize,
 ) -> WorkerPool {
     let queue = Arc::new(Mutex::new(VecDeque::from(tasks)));
@@ -29,7 +55,20 @@ pub fn spawn_workers(
         let queue = queue.clone();
         let tx = tx.clone();
         let cancel = cancel.clone();
+        let pause_cond = pause_cond.clone();
         handles.push(thread::spawn(move || loop {
+            {
+                let mut paused = pause_cond.0.lock().expect("pause lock");
+                while *paused && !cancel.load(Ordering::SeqCst) {
+                    paused = pause_cond.1.wait(paused).expect("condvar wait");
+                }
+            }
+            if cancel.load(Ordering::SeqCst) {
+                let task: Option<JobTask> = queue.lock().expect("queue lock").pop_front();
+                let Some(task) = task else { break };
+                let _ = tx.send(WorkerEvent::Finished(task.id, Err("cancelled".to_string())));
+                continue;
+            }
             let task: Option<JobTask> = queue.lock().expect("queue lock").pop_front();
             let Some(task) = task else { break };
             if cancel.load(Ordering::SeqCst) {
@@ -45,6 +84,8 @@ pub fn spawn_workers(
 
     WorkerPool {
         cancel,
+        pause,
+        pause_cond,
         _handles: handles,
     }
 }
