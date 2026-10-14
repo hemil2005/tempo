@@ -66,6 +66,7 @@ pub struct JobTask {
     pub input: PathBuf,
     pub output: PathBuf,
     pub settings: converter_core::EncodeSettings,
+    pub target_size_mb: Option<f64>,
 }
 
 pub fn output_path_for(input: &Path, out_dir: &Path, ext: &str, overwrite: bool) -> PathBuf {

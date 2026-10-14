@@ -191,4 +191,29 @@ mod tests {
         let _ = app.update(Message::Pause);
         assert!(!app.is_paused());
     }
+
+    #[test]
+    fn target_presets_configuration() {
+        let mut app = App::default();
+
+        // Discord 10MB preset
+        let _ = app.update(Message::PresetSelected(crate::settings::Preset::Discord10Mb));
+        assert_eq!(app.settings().preset, crate::settings::Preset::Discord10Mb);
+        assert_eq!(app.settings().format, OutputFormat::Opus);
+        assert_eq!(app.settings().target_size_mb(), Some(9.5));
+
+        // YouTube Music preset
+        let _ = app.update(Message::PresetSelected(crate::settings::Preset::YouTube));
+        assert_eq!(app.settings().preset, crate::settings::Preset::YouTube);
+        assert_eq!(app.settings().format, OutputFormat::M4a);
+        assert_eq!(app.settings().sample_rate, 48000);
+        assert_eq!(app.settings().aac_bitrate, 256);
+
+        // iPhone preset
+        let _ = app.update(Message::PresetSelected(crate::settings::Preset::IPhone));
+        assert_eq!(app.settings().preset, crate::settings::Preset::IPhone);
+        assert_eq!(app.settings().format, OutputFormat::M4a);
+        assert_eq!(app.settings().sample_rate, 44100);
+        assert_eq!(app.settings().aac_bitrate, 256);
+    }
 }

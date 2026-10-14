@@ -456,6 +456,7 @@ impl App {
                 input: job.input.clone(),
                 output,
                 settings,
+                target_size_mb: self.settings.target_size_mb(),
             });
         }
 
@@ -623,7 +624,7 @@ impl App {
 
         let preset_pick = pick_list(&Preset::ALL[..], Some(s.preset), Message::PresetSelected)
             .placeholder("Preset")
-            .width(170);
+            .width(240);
 
         let mut row1: Vec<Element<'_, Message>> = vec![
             text("Format:").into(),

@@ -95,8 +95,26 @@ fn convert_task(task: &JobTask, tx: &mpsc::Sender<WorkerEvent>, id: u64) -> Resu
     if let Some(parent) = task.output.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {}", e))?;
     }
+
+    let mut settings = task.settings;
+    if let Some(target_mb) = task.target_size_mb {
+        let duration_secs = decoded.frames() as f64 / decoded.sample_rate.max(1) as f64;
+        if duration_secs > 0.0 {
+            let target_kbits = (target_mb * 0.90) * 8192.0;
+            let calc_kbps = (target_kbits / duration_secs).round() as u32;
+            let clamped_kbps = match settings.format {
+                converter_core::OutputFormat::Opus => calc_kbps.clamp(24, 256),
+                converter_core::OutputFormat::Mp3 => calc_kbps.clamp(32, 320),
+                converter_core::OutputFormat::M4a => calc_kbps.clamp(32, 256),
+                converter_core::OutputFormat::OggVorbis => calc_kbps.clamp(45, 320),
+                _ => calc_kbps,
+            };
+            settings.quality = converter_core::Quality::Cbr { kbps: clamped_kbps };
+        }
+    }
+
     let tx = tx.clone();
-    converter_core::convert(&decoded, &task.settings, &task.output, &move |p: f32| {
+    converter_core::convert(&decoded, &settings, &task.output, &move |p: f32| {
         let _ = tx.send(WorkerEvent::Progress(id, p));
     })
     .map_err(|e| format!("encode: {}", e))?;

@@ -30,22 +30,34 @@ pub enum Preset {
     HighQuality,
     Balanced,
     SpaceSaver,
+    Discord10Mb,
+    Discord25Mb,
+    YouTube,
+    IPhone,
     Custom,
 }
 
 impl Preset {
-    pub const ALL: [Preset; 4] = [
+    pub const ALL: [Preset; 8] = [
         Preset::HighQuality,
         Preset::Balanced,
         Preset::SpaceSaver,
+        Preset::Discord10Mb,
+        Preset::Discord25Mb,
+        Preset::YouTube,
+        Preset::IPhone,
         Preset::Custom,
     ];
 
     pub fn label(&self) -> &'static str {
         match self {
-            Preset::HighQuality => "High Quality (Best)",
-            Preset::Balanced => "Balanced (Standard)",
-            Preset::SpaceSaver => "Space Saver (Compact)",
+            Preset::HighQuality => "Highest Quality (320k / Best)",
+            Preset::Balanced => "Balanced (Standard 192k)",
+            Preset::SpaceSaver => "Smallest File (64k-96k Opus)",
+            Preset::Discord10Mb => "Discord < 10 MB (Auto-bitrate)",
+            Preset::Discord25Mb => "Discord < 25 MB (Nitro)",
+            Preset::YouTube => "YouTube Music (256k AAC / 48kHz)",
+            Preset::IPhone => "iPhone / Apple (256k AAC .m4a)",
             Preset::Custom => "Custom",
         }
     }
@@ -111,13 +123,42 @@ impl GuiSettings {
                 self.vorbis_q = 6;
             }
             Preset::SpaceSaver => {
-                self.mp3_bitrate = 128;
+                self.format = OutputFormat::Opus;
+                self.mp3_bitrate = 96;
                 self.mp3_mode = Mp3Mode::Cbr;
-                self.aac_bitrate = 128;
-                self.opus_bitrate = 96;
-                self.vorbis_q = 4;
+                self.aac_bitrate = 96;
+                self.opus_bitrate = 64;
+                self.vorbis_q = 3;
+            }
+            Preset::Discord10Mb => {
+                self.format = OutputFormat::Opus;
+                self.opus_bitrate = 128;
+            }
+            Preset::Discord25Mb => {
+                self.format = OutputFormat::Opus;
+                self.opus_bitrate = 160;
+            }
+            Preset::YouTube => {
+                self.format = OutputFormat::M4a;
+                self.aac_bitrate = 256;
+                self.sample_rate = 48000;
+                self.channels = 2;
+            }
+            Preset::IPhone => {
+                self.format = OutputFormat::M4a;
+                self.aac_bitrate = 256;
+                self.sample_rate = 44100;
+                self.channels = 2;
             }
             Preset::Custom => {}
+        }
+    }
+
+    pub fn target_size_mb(&self) -> Option<f64> {
+        match self.preset {
+            Preset::Discord10Mb => Some(9.5),
+            Preset::Discord25Mb => Some(24.0),
+            _ => None,
         }
     }
     pub fn to_encode_settings(&self) -> EncodeSettings {
