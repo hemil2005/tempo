@@ -16,7 +16,7 @@
 - **⚡ Blazingly Fast**: Native performance powered by Rust, multi-threaded worker pools, and Link-Time Optimization (LTO).
 - **🖥️ Clean Desktop GUI (`tempo`)**: Built with [Iced](https://github.com/iced-rs/iced) — drag & drop audio files, track real-time progress, and batch convert full albums with one click.
 - **💻 Scriptable CLI (`tempo-cli`)**: Includes a dedicated command-line interface for automation, power users, and shell scripts.
-- **🏷️ Metadata & Tag Preservation**: Transfers title, artist, album, genre, year, and track numbers between formats seamlessly.
+- **🏷️ Metadata & Tag Preservation**: Transfers title, artist, album, genre, year, track numbers — and embedded cover art (MP3, FLAC, M4A, Opus, OGG) — between formats seamlessly.
 - **🎛️ Audio Customization**: Fine-tune CBR/VBR bitrates, sample rates (powered by the high-quality [Rubato](https://github.com/HEnquist/rubato) resampler), and channel configurations (Mono/Stereo).
 
 ---
@@ -31,7 +31,7 @@
 | **M4A / AAC** (`.m4a`, `.mp4`, `.aac`) | ✅ | ✅ | Fraunhofer FDK-AAC (`fdk-aac`) |
 | **Opus** (`.opus`) | ✅ | ✅ | libopus (`audiopus`) |
 | **Ogg Vorbis** (`.ogg`, `.oga`) | ✅ | ✅ | `vorbis_rs` |
-| **AIFF** (`.aiff`, `.aif`) | ✅ | ✅ | `hound` (Lossless PCM) |
+| **AIFF** (`.aiff`, `.aif`) | ✅ | ✅ | Custom writer (Lossless PCM) |
 
 ---
 
@@ -83,10 +83,10 @@ tempo-cli --help
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/tempo.git
+git clone https://github.com/hemil2005/tempo.git
 cd tempo
 
-# Build development binaries
+# Build development binaries (Windows: requires MinGW-w64; see Prerequisites)
 cargo build
 
 # Build optimized release binaries (LTO enabled)
@@ -123,10 +123,10 @@ tempo/
 - [x] Multi-threaded batch conversion worker pool
 - [x] Desktop GUI with drag-and-drop support
 - [x] CLI interface (`tempo-cli`)
-- [ ] Embedded album art / cover art preservation
-- [ ] Folder-level recursive batch conversion
-- [ ] Beginner-friendly preset profiles ("High Quality", "Podcast", "Lossless Archival")
-- [ ] Automated GitHub Actions release binaries for Windows, macOS, and Linux
+- [x] Embedded album art / cover art preservation (MP3, FLAC, M4A, Opus, OGG)
+- [x] Folder-level recursive batch conversion
+- [x] Beginner-friendly preset profiles ("High Quality", "Balanced", "Space Saver")
+- [x] Automated GitHub Actions release binaries for Windows, macOS, and Linux
 - [ ] Distribution via `winget` and package managers
 
 ---

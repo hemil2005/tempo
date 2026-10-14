@@ -747,6 +747,7 @@ version = "0.1.0"
 dependencies = [
  "audioadapter-buffers",
  "audiopus",
+ "base64",
  "bytes",
  "fdk-aac",
  "flacenc",

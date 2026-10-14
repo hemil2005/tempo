@@ -15,6 +15,7 @@ This project incorporates open-source components and libraries. Below is an over
 | **Rubato** | Fast audio sample rate conversion | [MIT](https://opensource.org/licenses/MIT) | [github.com/HEnquist/rubato](https://github.com/HEnquist/rubato) |
 | **id3 / metaflac / mp4ameta** | Audio metadata & tag readers/writers | [MIT](https://opensource.org/licenses/MIT) | Various community crates |
 | **rfd** | Native system file dialogs | [MIT](https://opensource.org/licenses/MIT) | [github.com/PolyMeilex/rfd](https://github.com/PolyMeilex/rfd) |
+| **base64** | Base64 encoding (cover-art embedding) | [MIT / Apache-2.0](https://opensource.org/licenses/MIT) | [github.com/marshallpierce/rust-base64](https://github.com/marshallpierce/rust-base64) |
 
 ---
 

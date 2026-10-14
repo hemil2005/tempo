@@ -12,6 +12,26 @@ pub struct Picture {
     pub description: Option<String>,
 }
 
+impl Picture {
+    pub fn to_metadata_block_picture(&self) -> String {
+        use base64::Engine;
+        let mut block = Vec::new();
+        block.extend_from_slice(&3u32.to_be_bytes());
+        block.extend_from_slice(&(self.mime_type.len() as u32).to_be_bytes());
+        block.extend_from_slice(self.mime_type.as_bytes());
+        let desc = self.description.clone().unwrap_or_default();
+        block.extend_from_slice(&(desc.len() as u32).to_be_bytes());
+        block.extend_from_slice(desc.as_bytes());
+        block.extend_from_slice(&0u32.to_be_bytes());
+        block.extend_from_slice(&0u32.to_be_bytes());
+        block.extend_from_slice(&0u32.to_be_bytes());
+        block.extend_from_slice(&0u32.to_be_bytes());
+        block.extend_from_slice(&(self.data.len() as u32).to_be_bytes());
+        block.extend_from_slice(&self.data);
+        base64::engine::general_purpose::STANDARD.encode(&block)
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Tags {
     pub title: Option<String>,
@@ -289,6 +309,12 @@ impl Tags {
             out.push(("LYRICS".to_string(), v.clone()));
         }
         out.push(("ENCODER".to_string(), "Tempo".to_string()));
+        if let Some(pic) = &self.picture {
+            out.push((
+                "METADATA_BLOCK_PICTURE".to_string(),
+                pic.to_metadata_block_picture(),
+            ));
+        }
         out
     }
 
@@ -383,5 +409,35 @@ mod tests {
         assert_eq!(pic.data, pic_data);
 
         let _ = std::fs::remove_file(&temp_file);
+    }
+
+    #[test]
+    fn metadata_block_picture_round_trip() {
+        use base64::Engine;
+        let pic_data = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        let pic = Picture {
+            mime_type: "image/png".to_string(),
+            data: pic_data.clone(),
+            description: Some("Cover".to_string()),
+        };
+        let encoded = pic.to_metadata_block_picture();
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(&encoded)
+            .unwrap();
+        assert_eq!(&raw[0..4], &3u32.to_be_bytes());
+        let mime_len = u32::from_be_bytes([raw[4], raw[5], raw[6], raw[7]]) as usize;
+        assert_eq!(&raw[8..8 + mime_len], b"image/png");
+        assert!(raw.ends_with(&pic_data));
+
+        let tags = Tags {
+            picture: Some(pic),
+            ..Default::default()
+        };
+        let comments = tags.vorbis_comments();
+        let mbp = comments
+            .iter()
+            .find(|(k, _)| k == "METADATA_BLOCK_PICTURE")
+            .expect("picture comment present");
+        assert_eq!(mbp.1, encoded);
     }
 }

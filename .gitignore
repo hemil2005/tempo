@@ -34,3 +34,15 @@ tempCodeRunnerFile*
 testdata/gui-shot2.png
 testdata/gui-shot3.png
 testdata/dbg.txt
+
+# Conversion outputs produced while testing (fixtures tone.wav/short.wav stay tracked)
+testdata/rt-*.*
+testdata/*-back.wav
+testdata/tone[0-9B]*.*
+testdata/tagtest.*.*
+testdata/short*.flac
+testdata/opus-final.mp3
+testdata/topus2mp3.mp3
+testdata/ref.m4a
+testdata/gui-out/
+testdata/gui-shot.png
