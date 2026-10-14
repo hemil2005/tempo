@@ -197,7 +197,9 @@ mod tests {
         let mut app = App::default();
 
         // Discord 10MB preset
-        let _ = app.update(Message::PresetSelected(crate::settings::Preset::Discord10Mb));
+        let _ = app.update(Message::PresetSelected(
+            crate::settings::Preset::Discord10Mb,
+        ));
         assert_eq!(app.settings().preset, crate::settings::Preset::Discord10Mb);
         assert_eq!(app.settings().format, OutputFormat::Opus);
         assert_eq!(app.settings().target_size_mb(), Some(9.5));
@@ -215,5 +217,27 @@ mod tests {
         assert_eq!(app.settings().format, OutputFormat::M4a);
         assert_eq!(app.settings().sample_rate, 44100);
         assert_eq!(app.settings().aac_bitrate, 256);
+    }
+
+    #[test]
+    fn folder_watcher_lifecycle_and_auto_convert() {
+        let mut app = App::default();
+        assert!(!app.is_watching());
+        assert!(!app.auto_convert_watched());
+
+        let temp_dir = std::env::temp_dir().join("tempo_watch_test");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let _ = app.update(Message::WatchFolderChosen(Some(temp_dir.clone())));
+        assert!(app.is_watching());
+
+        let _ = app.update(Message::AutoConvertWatchedToggled(true));
+        assert!(app.auto_convert_watched());
+
+        let _ = app.update(Message::ClearWatchFolder);
+        assert!(!app.is_watching());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

@@ -24,6 +24,7 @@ use crate::settings::{
     Chans, GuiSettings, Kbps, Mp3Mode, Preset, Rate, VbrLevel, VorbisQ, AAC_RATES, CHAN_OPTS,
     MP3_RATES, OPUS_RATES, RATE_OPTS, VBR_LEVELS, VORBIS_QS,
 };
+use crate::watcher::FolderWatcher;
 use crate::worker::{spawn_workers, suggested_worker_count, WorkerEvent, WorkerPool};
 
 const AUDIO_EXTS: [&str; 12] = [
@@ -39,6 +40,10 @@ pub enum Message {
     OutputChosen(Option<PathBuf>),
     OutputDirChanged(String),
     OverwriteToggled(bool),
+    BrowseWatchFolder,
+    WatchFolderChosen(Option<PathBuf>),
+    ClearWatchFolder,
+    AutoConvertWatchedToggled(bool),
     FormatSelected(OutputFormat),
     PresetSelected(Preset),
     Mp3ModeSelected(Mp3Mode),
@@ -74,6 +79,10 @@ pub struct App {
     failed_count: usize,
     worker_rx: Option<mpsc::Receiver<WorkerEvent>>,
     pool: Option<WorkerPool>,
+    watch_folder: Option<PathBuf>,
+    _watcher: Option<FolderWatcher>,
+    watch_rx: Option<mpsc::Receiver<PathBuf>>,
+    auto_convert_watched: bool,
     hover_drop: bool,
 }
 
@@ -90,6 +99,10 @@ impl Default for App {
             failed_count: 0,
             worker_rx: None,
             pool: None,
+            watch_folder: None,
+            _watcher: None,
+            watch_rx: None,
+            auto_convert_watched: false,
             hover_drop: false,
         }
     }
@@ -154,6 +167,34 @@ impl App {
             }
             Message::OverwriteToggled(v) => {
                 self.settings.overwrite = v;
+            }
+            Message::BrowseWatchFolder => {
+                return Task::perform(pick_watch_folder(), Message::WatchFolderChosen);
+            }
+            Message::WatchFolderChosen(path) => {
+                if let Some(p) = path {
+                    let (tx, rx) = mpsc::channel();
+                    match FolderWatcher::start(&p, tx) {
+                        Ok(w) => {
+                            self.push_log(format!("watching folder: {}", p.display()));
+                            self.watch_folder = Some(p);
+                            self._watcher = Some(w);
+                            self.watch_rx = Some(rx);
+                        }
+                        Err(e) => {
+                            self.push_log(format!("failed to watch folder: {}", e));
+                        }
+                    }
+                }
+            }
+            Message::ClearWatchFolder => {
+                self.watch_folder = None;
+                self._watcher = None;
+                self.watch_rx = None;
+                self.push_log("stopped folder watching".to_string());
+            }
+            Message::AutoConvertWatchedToggled(v) => {
+                self.auto_convert_watched = v;
             }
             Message::FormatSelected(f) => {
                 self.settings.format = f;
@@ -287,6 +328,7 @@ impl App {
             }
             Message::PollWorker => {
                 self.drain_worker();
+                self.drain_watcher();
             }
             Message::WindowEvent(event) => match event {
                 window::Event::FileHovered(_) => {
@@ -345,6 +387,33 @@ impl App {
         };
         for event in events {
             self.apply_worker_event(event);
+        }
+    }
+
+    fn drain_watcher(&mut self) {
+        let paths: Vec<PathBuf> = match &self.watch_rx {
+            Some(rx) => rx.try_iter().collect(),
+            None => return,
+        };
+        let mut added = 0;
+        for path in paths {
+            if !is_audio_file(&path) {
+                continue;
+            }
+            if self.jobs.iter().any(|j| j.input == path) {
+                continue;
+            }
+            self.jobs.push(Job {
+                id: self.next_id,
+                input: path.clone(),
+                status: JobStatus::Queued,
+            });
+            self.next_id += 1;
+            added += 1;
+            self.push_log(format!("watch inbox: added {}", path.display()));
+        }
+        if added > 0 && self.auto_convert_watched && !self.running {
+            self.start_conversion();
         }
     }
 
@@ -714,12 +783,41 @@ impl App {
         ]
         .spacing(8);
 
+        let watch_label = match &self.watch_folder {
+            Some(p) => format!("Watch Inbox: {}", p.display()),
+            None => "Watch Folder: None (manual queue only)".to_string(),
+        };
+        let mut watch_row_items: Vec<Element<'_, Message>> = vec![
+            text(watch_label).size(12).width(Fill).into(),
+            button("Set Watch Folder...")
+                .on_press(Message::BrowseWatchFolder)
+                .into(),
+        ];
+        if self.watch_folder.is_some() {
+            watch_row_items.push(
+                button("✕ Stop Watch")
+                    .on_press(Message::ClearWatchFolder)
+                    .style(button::secondary)
+                    .into(),
+            );
+        }
+        watch_row_items.push(
+            checkbox(self.auto_convert_watched)
+                .label("Auto-start when dropped into watch folder")
+                .on_toggle(Message::AutoConvertWatchedToggled)
+                .into(),
+        );
+        let row4 = row(watch_row_items)
+            .spacing(8)
+            .align_y(iced::Alignment::Center);
+
         container(
             column![
                 text("Conversion Settings").size(14),
                 row(row1).spacing(8).align_y(iced::Alignment::Center),
                 row2.align_y(iced::Alignment::Center),
                 row3.align_y(iced::Alignment::Center),
+                row4.align_y(iced::Alignment::Center),
             ]
             .spacing(10),
         )
@@ -893,6 +991,14 @@ impl App {
     pub fn is_paused(&self) -> bool {
         self.paused
     }
+
+    pub fn is_watching(&self) -> bool {
+        self.watch_folder.is_some()
+    }
+
+    pub fn auto_convert_watched(&self) -> bool {
+        self.auto_convert_watched
+    }
 }
 
 fn is_audio_file(path: &Path) -> bool {
@@ -942,6 +1048,14 @@ async fn pick_audio_folder() -> Vec<PathBuf> {
     } else {
         Vec::new()
     }
+}
+
+async fn pick_watch_folder() -> Option<PathBuf> {
+    rfd::AsyncFileDialog::new()
+        .set_title("Choose folder to watch (Auto-Inbox)")
+        .pick_folder()
+        .await
+        .map(|h| h.path().to_path_buf())
 }
 
 pub fn collect_audio_files_recursive(dir: &Path) -> Vec<PathBuf> {

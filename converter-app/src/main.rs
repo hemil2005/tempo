@@ -1,6 +1,7 @@
 mod app;
 mod job;
 mod settings;
+mod watcher;
 mod worker;
 
 #[cfg(test)]
