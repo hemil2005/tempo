@@ -721,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "converter-app"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "converter-core",
  "iced",
@@ -731,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "converter-cli"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -743,7 +743,7 @@ dependencies = [
 
 [[package]]
 name = "converter-core"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "audioadapter-buffers",
  "audiopus",
